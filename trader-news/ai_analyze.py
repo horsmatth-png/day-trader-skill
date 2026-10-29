@@ -69,12 +69,12 @@ def run_ai_analysis():
         Keep it concise, actionable, and formatted for Discord markdown.
         """
 
-    # Primary and fallback models for high availability
-    models_to_try = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    # Currently active and supported model endpoints
+    models_to_try = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"]
     
     for model_name in models_to_try:
         success = False
-        max_retries = 3
+        max_retries = 4
         
         for attempt in range(1, max_retries + 1):
             try:
@@ -88,13 +88,14 @@ def run_ai_analysis():
                 break
             except Exception as e:
                 err_msg = str(e)
-                if "503" in err_msg or "UNAVAILABLE" in err_msg:
-                    wait_time = attempt * 10
-                    print(f"⚠️ {model_name} busy (503). Retrying in {wait_time}s (Attempt {attempt}/{max_retries})...")
+                # Handle temporary high-demand / connection reset errors
+                if any(err in err_msg for err in ["503", "UNAVAILABLE", "Connection reset"]):
+                    wait_time = attempt * 12
+                    print(f"⚠️ {model_name} busy. Retrying in {wait_time}s (Attempt {attempt}/{max_retries})...")
                     time.sleep(wait_time)
                 else:
                     print(f"Gemini API error on {model_name}: {e}")
-                    break  # Skip retries if error is not capacity-related (e.g. 404/auth)
+                    break  # Skip retries if error is not capacity-related (e.g., 404/auth)
 
         if success:
             break
