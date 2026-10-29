@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import time
 from google import genai
 
 def run_ai_analysis():
@@ -23,7 +24,7 @@ def run_ai_analysis():
         print(f"Error reading watchlist.json: {e}")
         return
 
-    # Extract ticker candidates robustly across dict and list structures
+    # Extract ticker candidates robustly
     top_tickers = []
     if isinstance(data, list):
         top_tickers = data[:5]
@@ -68,16 +69,24 @@ def run_ai_analysis():
         Keep it concise, actionable, and formatted for Discord markdown.
         """
 
-    try:
-        # Updated model ID to current active endpoint
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt
-        )
-        print("\n**🤖 GEMINI AI ANALYSIS REPORT**")
-        print(response.text)
-    except Exception as e:
-        print(f"Gemini API error: {e}")
+    # Retry logic to automatically handle 503 high-demand surges
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt
+            )
+            print("\n**🤖 GEMINI AI ANALYSIS REPORT**")
+            print(response.text)
+            break
+        except Exception as e:
+            if "503" in str(e) and attempt < max_retries:
+                wait_time = attempt * 5
+                print(f"⚠️ Gemini servers busy (503). Retrying in {wait_time}s (Attempt {attempt}/{max_retries})...")
+                time.sleep(wait_time)
+            else:
+                print(f"Gemini API error: {e}")
 
 if __name__ == "__main__":
     run_ai_analysis()
