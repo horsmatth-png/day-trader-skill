@@ -54,6 +54,12 @@ jobs:
           python3 trader-scanner/scan.py ${{ steps.pick.outputs.mode }} --show 15 >> out.txt 2>&1 || true
           cat out.txt
 
+      - name: Run News & Catalyst Enrichment
+        if: steps.pick.outputs.mode != 'skip'
+        run: |
+          # Checks generated watchlist items for recent news/filings if available
+          python3 trader-news/news.py --watchlist trader/watchlist.json >> out.txt 2>&1 || true
+
       - name: Post to Discord
         if: steps.pick.outputs.mode != 'skip'
         env:
