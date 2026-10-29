@@ -1,0 +1,72 @@
+name: Day Trading & ORB Scan
+
+on:
+  schedule:
+    - cron: '0 13 * * 1-5'    # 9:00 AM ET pre-market daily scan
+    - cron: '15 14 * * 1-5'   # 10:15 AM ET Opening Range Breakout (ORB)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Which intraday scan to run'
+        type: choice
+        options:
+          - orb
+          - daily
+        default: orb
+
+jobs:
+  day-trade-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-genai
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Pick the scan from New York time
+        id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          t=$((10#$(TZ=America/New_York date +%H%M)))
+          if [ "$t" -ge 850 ] && [ "$t" -le 930 ]; then
+            echo "mode=daily" >> "$GITHUB_OUTPUT"
+          elif [ "$t" -ge 1010 ] && [ "$t" -le 1045 ]; then
+            echo "mode=orb" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Intraday & Volume Scan
+        if: steps.pick.outputs.mode != 'skip'
+        run: |
+          python3 trader-scanner/scan.py universe > out.txt 2>&1 || true
+          python3 trader-scanner/scan.py ${{ steps.pick.outputs.mode }} --show 15 >> out.txt 2>&1 || true
+
+      - name: Run Gemini Intraday Catalyst Check
+        if: steps.pick.outputs.mode != 'skip'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 trader-news/ai_analyze.py >> out.txt 2>&1 || true
+
+      - name: Post Intraday Alerts to Discord
+        if: steps.pick.outputs.mode != 'skip'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
+          body=$(tail -c 1700 out.txt)
+          header="⚡ Day Trading Alert: ${{ steps.pick.outputs.mode }} ($(TZ=America/New_York date '+%a %H:%M') NY)"
+          jq -n --arg c "$(printf '%s\n```\n%s\n```' "$header" "$body")" '{content: $c}' \
+            | curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
