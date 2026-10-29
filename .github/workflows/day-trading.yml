@@ -50,15 +50,15 @@ jobs:
       - name: Run Intraday & Volume Scan
         if: steps.pick.outputs.mode != 'skip'
         run: |
-          python3 trader-scanner/scan.py universe > out.txt 2>&1 || true
-          python3 trader-scanner/scan.py ${{ steps.pick.outputs.mode }} --show 15 >> out.txt 2>&1 || true
+          python3 trader-scanner/scan.py universe > scan_out.txt 2>&1 || true
+          python3 trader-scanner/scan.py ${{ steps.pick.outputs.mode }} --show 15 >> scan_out.txt 2>&1 || true
 
       - name: Run Gemini Intraday Catalyst Check
         if: steps.pick.outputs.mode != 'skip'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python3 trader-news/ai_analyze.py >> out.txt 2>&1 || true
+          python3 trader-news/ai_analyze.py > ai_out.txt 2>&1 || true
 
       - name: Post Intraday Alerts to Discord
         if: steps.pick.outputs.mode != 'skip'
@@ -66,7 +66,13 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
-          body=$(tail -c 1700 out.txt)
+          
+          # Extract top 10 scanner hits
+          scan_summary=$(tail -n 15 scan_out.txt | head -n 10)
+          ai_report=$(cat ai_out.txt)
           header="⚡ Day Trading Alert: ${{ steps.pick.outputs.mode }} ($(TZ=America/New_York date '+%a %H:%M') NY)"
-          jq -n --arg c "$(printf '%s\n```\n%s\n```' "$header" "$body")" '{content: $c}' \
+          
+          formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
+          
+          jq -n --arg c "$formatted_msg" '{content: $c}' \
             | curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
