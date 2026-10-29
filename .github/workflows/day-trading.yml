@@ -67,9 +67,9 @@ jobs:
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
           
-          # Extract top 10 scanner hits
-          scan_summary=$(tail -n 15 scan_out.txt | head -n 10)
-          ai_report=$(cat ai_out.txt)
+          # Trim outputs to guarantee staying within Discord's 2000-character limit
+          scan_summary=$(tail -n 12 scan_out.txt | head -n 8)
+          ai_report=$(cat ai_out.txt | head -c 1200)
           header="⚡ Day Trading Alert: ${{ steps.pick.outputs.mode }} ($(TZ=America/New_York date '+%a %H:%M') NY)"
           
           formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
