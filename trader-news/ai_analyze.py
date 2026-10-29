@@ -17,37 +17,47 @@ def run_ai_analysis():
         return
 
     with open(watchlist_path, "r") as f:
-        watchlist = json.load(f)
+        data = json.load(f)
 
-    top_tickers = watchlist[:5] if isinstance(watchlist, list) else []
+    # Extract ticker candidates robustly across list or dict formats
+    top_tickers = []
+    if isinstance(data, list):
+        top_tickers = data[:5]
+    elif isinstance(data, dict):
+        candidates = data.get("hits") or data.get("symbols") or data.get("watchlist") or []
+        top_tickers = candidates[:5]
+
     if not top_tickers:
-        print("Watchlist empty.")
+        print("Watchlist empty or no valid ticker hits parsed.")
         return
 
-    # Check if this run was triggered with macro/swing focus
-    is_macro = "--focus macro" in " ".join(sys.argv)
+    print(f"Analyzing top candidates with Gemini: {top_tickers}")
+
+    # Check command line flags for macro vs day trading focus
+    cli_args = " ".join(sys.argv)
+    is_macro = "--focus macro" in cli_args or "macro" in cli_args
 
     if is_macro:
         prompt = f"""
-        You are a seasoned portfolio manager and macro strategist. Analyze these watchlist assets for multi-week swing trading and long-term investment potential, keeping macroeconomic conditions, sector trends, and fundamental strength in mind:
+        You are a seasoned portfolio manager and macro strategist. Analyze these top breakout candidates for multi-week swing trading and long-term potential:
         {json.dumps(top_tickers, indent=2)}
 
         Provide a structured breakdown covering:
-        1. Macroeconomic headwinds/tailwinds impacting these assets.
-        2. Fundamental strength or valuation notes based on available context.
+        1. Macro headwinds/tailwinds impacting these assets.
+        2. Fundamental strength and valuation notes.
         3. A multi-week outlook verdict (Accumulate / Hold / Avoid).
         Keep it concise and formatted for Discord markdown.
         """
     else:
         prompt = f"""
-        You are an expert day trader. Analyze these setups focusing on short-term RSI, volume, and intraday catalysts:
+        You are an expert intraday trader. Analyze these top Opening Range Breakout (ORB) / volume setup candidates:
         {json.dumps(top_tickers, indent=2)}
 
-        Provide a 1-2 sentence verdict per ticker:
-        - 🔥 BULLISH MOMENTUM (Safe for intraday continuation)
-        - ⚠️ DANGER / CATALYST RISK (Avoid or watch for reversals)
+        Provide a 1-2 sentence quick tactical assessment for each ticker:
+        - 🔥 BULLISH MOMENTUM (Safe for intraday continuation / gap-and-go)
+        - ⚠️ DANGER / CATALYST RISK (Avoid or watch for fakeout/reversal)
         - ℹ️ NEUTRAL
-        Keep it short and formatted for Discord markdown.
+        Keep it concise and formatted for Discord markdown.
         """
 
     try:
