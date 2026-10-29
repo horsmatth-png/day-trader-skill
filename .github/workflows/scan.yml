@@ -1,0 +1,70 @@
+name: Day trader scan to Discord
+
+# Runs the scanner on weekdays and posts the result to a Discord channel.
+# Two schedules per run time because US clocks change on a different date
+# from UK/UTC; a step below checks New York time and only runs in the right window.
+on:
+  schedule:
+    - cron: '0 13 * * 1-5'    # 9:00 AM ET while US is on daylight time
+    - cron: '0 14 * * 1-5'    # 9:00 AM ET while US is on standard time
+    - cron: '15 14 * * 1-5'   # 10:15 AM ET (daylight time)
+    - cron: '15 15 * * 1-5'   # 10:15 AM ET (standard time)
+  workflow_dispatch:           # lets you press "Run workflow" to test it
+    inputs:
+      mode:
+        description: 'Which scan to run now'
+        type: choice
+        options:
+          - orb
+          - daily
+        default: orb
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Pick the scan from New York time
+        id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          t=$((10#$(TZ=America/New_York date +%H%M)))
+          echo "New York time is $t"
+          if [ "$t" -ge 850 ] && [ "$t" -le 930 ]; then
+            echo "mode=daily" >> "$GITHUB_OUTPUT"
+          elif [ "$t" -ge 1010 ] && [ "$t" -le 1045 ]; then
+            echo "mode=orb" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run the scan
+        if: steps.pick.outputs.mode != 'skip'
+        run: |
+          python3 trader-scanner/scan.py universe > out.txt 2>&1 || true
+          python3 trader-scanner/scan.py ${{ steps.pick.outputs.mode }} --show 15 >> out.txt 2>&1 || true
+          cat out.txt
+
+      - name: Post to Discord
+        if: steps.pick.outputs.mode != 'skip'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "No DISCORD_WEBHOOK_URL secret set, skipping."
+            exit 0
+          fi
+          # Discord messages max out at 2000 characters, so keep the tail of the output
+          body=$(tail -c 1700 out.txt)
+          header="Scan: ${{ steps.pick.outputs.mode }} ($(TZ=America/New_York date '+%a %H:%M') New York). Matched a rule, not a buy signal."
+          jq -n --arg c "$(printf '%s\n```\n%s\n```' "$header" "$body")" '{content: $c}' \
+            | curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
