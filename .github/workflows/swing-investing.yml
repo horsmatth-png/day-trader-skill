@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: uses/setup-python@v5
         with:
           python-version: '3.x'
 
@@ -33,6 +33,10 @@ jobs:
       - name: Run Macro & Fundamental Screening
         run: |
           echo "=== MACRO & SWING SETUP SCAN ===" > swing_out.txt
+          # 1. Build the stock universe (creates trader/universe.txt)
+          python3 trader-scanner/scan.py universe >> swing_out.txt 2>&1 || true
+
+          # 2. Run the scanner to populate trader/watchlist.json
           python3 trader-scanner/scan.py daily --show 10 >> swing_out.txt 2>&1 || true
 
       - name: Run Gemini Macro & Swing Intelligence
