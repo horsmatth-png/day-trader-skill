@@ -1,0 +1,52 @@
+name: Swing Trading & Macro Investing Analysis
+
+on:
+  schedule:
+    - cron: '0 22 * * 0'     # Runs every Sunday at 10:00 PM UTC (pre-week macro prep)
+  workflow_dispatch:
+    inputs:
+      focus:
+        description: 'Analysis Focus'
+        type: choice
+        options:
+          - macro-swings
+          - long-term-fundamentals
+        default: macro-swings
+
+jobs:
+  swing-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-genai
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run Macro & Fundamental Screening
+        run: |
+          echo "=== MACRO & SWING SETUP SCAN ===" > swing_out.txt
+          python3 trader-scanner/scan.py daily --show 10 >> swing_out.txt 2>&1 || true
+
+      - name: Run Gemini Macro & Swing Intelligence
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 trader-news/ai_analyze.py --focus macro >> swing_out.txt 2>&1 || true
+
+      - name: Post Swing/Macro Report to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
+          body=$(tail -c 1700 swing_out.txt)
+          header="📈 Swing & Macro Prep Report ($(date '+%a %b %d'))"
+          jq -n --arg c "$(printf '%s\n```\n%s\n```' "$header" "$body")" '{content: $c}' \
+            | curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
