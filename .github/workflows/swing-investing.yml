@@ -32,25 +32,31 @@ jobs:
 
       - name: Run Macro & Fundamental Screening
         run: |
-          echo "=== MACRO & SWING SETUP SCAN ===" > swing_out.txt
+          echo "=== MACRO & SWING SETUP SCAN ===" > scan_out.txt
           # 1. Build the stock universe (creates trader/universe.txt)
-          python3 trader-scanner/scan.py universe >> swing_out.txt 2>&1 || true
+          python3 trader-scanner/scan.py universe >> scan_out.txt 2>&1 || true
 
           # 2. Run the scanner to populate trader/watchlist.json
-          python3 trader-scanner/scan.py daily --show 10 >> swing_out.txt 2>&1 || true
+          python3 trader-scanner/scan.py daily --show 10 >> scan_out.txt 2>&1 || true
 
       - name: Run Gemini Macro & Swing Intelligence
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python3 trader-news/ai_analyze.py --focus macro >> swing_out.txt 2>&1 || true
+          python3 trader-news/ai_analyze.py --focus macro > ai_out.txt 2>&1 || true
 
       - name: Post Swing/Macro Report to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
-          body=$(tail -c 1700 swing_out.txt)
+          
+          # Extract top scanner hits
+          scan_summary=$(tail -n 18 scan_out.txt | head -n 12)
+          ai_report=$(cat ai_out.txt)
           header="📈 Swing & Macro Prep Report ($(date '+%a %b %d'))"
-          jq -n --arg c "$(printf '%s\n```\n%s\n```' "$header" "$body")" '{content: $c}' \
+          
+          formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
+          
+          jq -n --arg c "$formatted_msg" '{content: $c}' \
             | curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
