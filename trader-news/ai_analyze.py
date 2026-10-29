@@ -24,17 +24,17 @@ def run_ai_analysis():
         print("Watchlist empty.")
         return
 
-    # Check if this run is for macro/swing or day trading
-    is_macro = "--focus macro" in sys.argv
+    # Check if this run was triggered with macro/swing focus
+    is_macro = "--focus macro" in " ".join(sys.argv)
 
     if is_macro:
         prompt = f"""
-        You are a seasoned portfolio manager and macro strategist. Analyze these watchlist assets for multi-week swing trading and long-term investment potential:
+        You are a seasoned portfolio manager and macro strategist. Analyze these watchlist assets for multi-week swing trading and long-term investment potential, keeping macroeconomic conditions, sector trends, and fundamental strength in mind:
         {json.dumps(top_tickers, indent=2)}
 
-        Provide a breakdown covering:
-        1. Macroeconomic headwinds/tailwinds impacting these sectors.
-        2. Fundamental strength or valuation concerns.
+        Provide a structured breakdown covering:
+        1. Macroeconomic headwinds/tailwinds impacting these assets.
+        2. Fundamental strength or valuation notes based on available context.
         3. A multi-week outlook verdict (Accumulate / Hold / Avoid).
         Keep it concise and formatted for Discord markdown.
         """
@@ -55,7 +55,7 @@ def run_ai_analysis():
             model="gemini-2.5-flash",
             contents=prompt
         )
-        print("\n--- GEMINI AI INSIGHTS ---")
+        print("\n--- GEMINI AI INTEL REPORT ---")
         print(response.text)
     except Exception as e:
         print(f"Gemini API error: {e}")
