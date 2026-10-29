@@ -69,24 +69,35 @@ def run_ai_analysis():
         Keep it concise, actionable, and formatted for Discord markdown.
         """
 
-    # Retry logic to automatically handle 503 high-demand surges
-    max_retries = 3
-    for attempt in range(1, max_retries + 1):
-        try:
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=prompt
-            )
-            print("\n**🤖 GEMINI AI ANALYSIS REPORT**")
-            print(response.text)
+    # Primary and fallback models for high availability
+    models_to_try = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    
+    for model_name in models_to_try:
+        success = False
+        max_retries = 3
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                print("\n**🤖 GEMINI AI ANALYSIS REPORT**")
+                print(response.text)
+                success = True
+                break
+            except Exception as e:
+                err_msg = str(e)
+                if "503" in err_msg or "UNAVAILABLE" in err_msg:
+                    wait_time = attempt * 10
+                    print(f"⚠️ {model_name} busy (503). Retrying in {wait_time}s (Attempt {attempt}/{max_retries})...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"Gemini API error on {model_name}: {e}")
+                    break  # Skip retries if error is not capacity-related (e.g. 404/auth)
+
+        if success:
             break
-        except Exception as e:
-            if "503" in str(e) and attempt < max_retries:
-                wait_time = attempt * 5
-                print(f"⚠️ Gemini servers busy (503). Retrying in {wait_time}s (Attempt {attempt}/{max_retries})...")
-                time.sleep(wait_time)
-            else:
-                print(f"Gemini API error: {e}")
 
 if __name__ == "__main__":
     run_ai_analysis()
