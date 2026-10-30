@@ -31,20 +31,20 @@ jobs:
           pip install google-genai
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Pick the scan from New York time
+      - name: Determine scan mode
         id: pick
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          t=$((10#$(TZ=America/New_York date +%H%M)))
-          if [ "$t" -ge 850 ] && [ "$t" -le 930 ]; then
+          
+          # Rely on the UTC trigger hour to avoid strict wall-clock race conditions
+          current_utc_hour=$(date -u +%H)
+          if [ "$current_utc_hour" -eq 13 ]; then
             echo "mode=daily" >> "$GITHUB_OUTPUT"
-          elif [ "$t" -ge 1010 ] && [ "$t" -le 1045 ]; then
-            echo "mode=orb" >> "$GITHUB_OUTPUT"
           else
-            echo "mode=skip" >> "$GITHUB_OUTPUT"
+            echo "mode=orb" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run Intraday & Volume Scan
@@ -67,7 +67,7 @@ jobs:
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
           
-          # Trim outputs to guarantee staying within Discord's 2000-character limit
+          # Safely trim outputs to guarantee staying within Discord's 2000-character limit
           scan_summary=$(tail -n 12 scan_out.txt | head -n 8)
           ai_report=$(cat ai_out.txt | head -c 1200)
           header="⚡ Day Trading Alert: ${{ steps.pick.outputs.mode }} ($(TZ=America/New_York date '+%a %H:%M') NY)"
