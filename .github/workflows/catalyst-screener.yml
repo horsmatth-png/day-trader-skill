@@ -51,7 +51,7 @@ jobs:
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
           
           scan_summary=$(tail -n 10 scan_out.txt | head -n 6)
-          ai_report=$(cat ai_out.txt | head -c 1200)
+          ai_report=$(cat ai_out.txt | head -c 1600)
           header="🎯 Daily Top 10 Catalyst Report ($(TZ=America/New_York date '+%a %b %d') Pre-Market)"
           
           formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
