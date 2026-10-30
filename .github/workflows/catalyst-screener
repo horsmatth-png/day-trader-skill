@@ -1,0 +1,60 @@
+name: Catalyst & Event-Driven Screener
+
+on:
+  schedule:
+    - cron: '30 12 * * 1-5'    # Runs daily at 8:30 AM ET (Pre-market news & catalyst scanning)
+  workflow_dispatch:
+    inputs:
+      focus:
+        description: 'Focus Area'
+        type: choice
+        options:
+          - all-catalysts
+          - earnings-only
+          - macro-news
+        default: all-catalysts
+
+jobs:
+  catalyst-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-genai
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Fetch Market Data & Catalyst Inputs
+        run: |
+          echo "=== CATALYST & NEWS SCREENING ===" > scan_out.txt
+          python3 trader-scanner/scan.py universe >> scan_out.txt 2>&1 || true
+          python3 trader-scanner/scan.py daily --show 20 >> scan_out.txt 2>&1 || true
+
+      - name: Run Gemini Catalyst & Fundamental Analysis
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # Pass --focus catalyst to trigger 5 Day / 5 Swing pick extraction
+          python3 trader-news/ai_analyze.py --focus catalyst > ai_out.txt 2>&1 || true
+
+      - name: Post Catalyst Report to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
+          
+          scan_summary=$(tail -n 10 scan_out.txt | head -n 6)
+          ai_report=$(cat ai_out.txt | head -c 1200)
+          header="🎯 Daily Top 10 Catalyst Report ($(TZ=America/New_York date '+%a %b %d') Pre-Market)"
+          
+          formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
+          
+          jq -n --arg c "$formatted_msg" '{content: $c}' \
+            | curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
