@@ -53,7 +53,7 @@ jobs:
           
           # Safely trim outputs to guarantee staying within Discord's 2000-character limit
           scan_summary=$(tail -n 12 scan_out.txt | head -n 8)
-          ai_report=$(cat ai_out.txt | head -c 1200)
+          ai_report=$(cat ai_out.txt | head -c 1600)
           header="📈 Swing & Macro Prep Report ($(date '+%a %b %d'))"
           
           formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
