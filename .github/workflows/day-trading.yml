@@ -2,10 +2,9 @@ name: Day Trading & ORB Scanner
 
 on:
   schedule:
-    # Runs Monday to Friday during US market hours (UTC cron triggers to avoid queue delays)
-    - cron: '35 13 * * 1-5'    # 9:35 AM ET (5 mins after Market Open)
-    - cron: '50 13 * * 1-5'    # 9:50 AM ET (ORB 15-min completion window)
-    - cron: '15 14 * * 1-5'    # 10:15 AM ET (Mid-Morning Momentum Check)
+    - cron: '35 13 * * 1-5'    # 9:35 AM ET
+    - cron: '50 13 * * 1-5'    # 9:50 AM ET
+    - cron: '15 14 * * 1-5'    # 10:15 AM ET
   workflow_dispatch:
 
 jobs:
@@ -28,36 +27,29 @@ jobs:
       - name: Run Intraday & ORB Scanner
         run: |
           mkdir -p trader
-          # Run ORB scan to check opening range breakouts
-          python3 scan.py orb > scan_out.txt 2>&1 || true
+          python3 scan.py orb > scan_out.txt 2>/dev/null || true
 
       - name: Run Gemini Day Trading Analysis
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # Uses --focus default (Day Trading intraday ORB breakdown)
-          python3 trader-news/ai_analyze.py > ai_out.txt 2>&1 || true
+          python3 trader-news/ai_analyze.py > ai_out.txt 2>/dev/null || true
 
       - name: Post Day Trading Report to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-            echo "❌ Error: DISCORD_WEBHOOK_URL secret is missing or empty!"
-            exit 1
-          fi
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
 
-          # Safe character slicing to ensure payload never breaches Discord's 2000 character limit
-          scan_summary=$(cat scan_out.txt 2>/dev/null | head -c 400 || echo "No scan data available")
-          ai_report=$(cat ai_out.txt 2>/dev/null | head -c 1300 || echo "No AI analysis generated")
-          header="⚡ Day Trading & ORB Setup Report ($(date '+%a %b %d %H:%M ET'))"
+          header="⚡ **Day Trading & ORB Setup Report ($(date '+%a %b %d'))**"
+          scan_summary=$(cat scan_out.txt 2>/dev/null | head -c 1700 || echo "No scan data available")
+          part1_msg=$(printf '%s\n\n```\n%s\n```' "$header" "$scan_summary")
 
-          formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
+          jq -n --arg c "$part1_msg" '{content: $c}' \
+            | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
 
-          echo "Sending payload to Discord..."
+          sleep 1
 
-          response=$(jq -n --arg c "$formatted_msg" '{content: $c}' \
-            | curl -s -w "\nHTTP Status: %{http_code}\n" -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL")
-
-          echo "Discord Response Output:"
-          echo "$response"
+          ai_report=$(cat ai_out.txt 2>/dev/null | head -c 1800 || echo "No AI analysis generated")
+          jq -n --arg c "$ai_report" '{content: $c}' \
+            | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
