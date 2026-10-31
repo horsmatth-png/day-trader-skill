@@ -37,7 +37,7 @@ jobs:
           indices = {
               'Nasdaq (QQQ)': 'QQQ',
               'S&P 500 (SPY)': 'SPY',
-              'FTSE 100 (.L)': 'ISF.L',
+              'FTSE 100 (^FTSE)': '^FTSE',
               'DAX (EWG)': 'EWG',
               'Volatility (VIX)': '^VIX'
           }
