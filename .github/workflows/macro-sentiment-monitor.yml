@@ -1,0 +1,64 @@
+name: Global Macro & Index Sentiment Monitor
+
+on:
+  schedule:
+    - cron: '15 11 * * 1-5'    # Runs at 7:15 AM ET / 12:15 PM GMT (Pre-US & Mid-European Session)
+  workflow_dispatch:
+
+jobs:
+  macro-sentiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-genai yfinance
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Fetch Index & Macro Data
+        run: |
+          echo "=== GLOBAL INDEX MACRO SCAN ===" > scan_out.txt
+          # Pulls baseline data for key regional index benchmarks
+          python3 -c "
+          import yfinance as yf
+          import json
+          indices = {'Nasdaq (QQQ)': 'QQQ', 'S&P 500 (SPY)': 'SPY', 'FTSE 100 (.L)': 'ISF.L', 'DAX (EWG)': 'EWG', 'Volatility (VIX)': '^VIX'}
+          data = {}
+          for name, ticker in indices.items():
+              t = yf.Ticker(ticker)
+              hist = t.history(period='5d')
+              if not hist.empty:
+                  latest = hist['Close'].iloc[-1]
+                  prev = hist['Close'].iloc[-2]
+                  pct = (latest / prev - 1) * 100
+                  data[name] = {'price': round(latest, 2), 'change_pct': round(pct, 2)}
+          print(json.dumps(data, indent=2))
+          " >> scan_out.txt 2>&1 || true
+
+      - name: Run Gemini Macro Shift & Sentiment Analysis
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 trader-news/ai_analyze.py --focus index-macro > ai_out.txt 2>&1 || true
+
+      - name: Post Macro Sentiment Report to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
+          
+          scan_summary=$(cat scan_out.txt | head -n 12)
+          ai_report=$(cat ai_out.txt | head -c 1500)
+          header="🌐 Global Index Macro & Sentiment Shift Report ($(date '+%a %b %d'))"
+          
+          formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
+          
+          jq -n --arg c "$formatted_msg" '{content: $c}' \
+            | curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
