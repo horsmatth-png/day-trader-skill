@@ -16,7 +16,6 @@ def analyze_market():
         try:
             with open(watchlist_path, "r") as f:
                 content = f.read()
-                # Handle both JSON array/dict or plain text structures safely
                 if content.strip().startswith("[") or content.strip().startswith("{"):
                     parsed = json.loads(content)
                     watchlist_data = json.dumps(parsed, indent=2)
@@ -25,24 +24,29 @@ def analyze_market():
         except Exception as e:
             watchlist_data = f"Error reading watchlist.json: {e}"
 
-    # Build prompt configuration based on focus flag
-    if args.focus == "macro":
+    # Build focus-specific prompts & define maximum character caps for output safety
+    if args.focus == "index-macro":
+        max_output_length = 1000
         prompt = f"""
-You are an expert global macro and swing trader analyzing a mixed universe of US and UK (FTSE 100) equities.
-Analyze the following market watch list and provide a high-level macro prep report for the upcoming week.
+You are a senior institutional macro risk manager. Analyze the current global index benchmarks below.
+Predict macro shifts, sector liquidations, or risk-off rotations across the Nasdaq, S&P 500, FTSE 100, and DAX.
 
-Key Instructions:
-1. Identify major macro themes (e.g., Tech vs. Energy/Commodities, US/UK Rate Divergence, Defensive Growth).
-2. Note key technical levels (20-day breakouts, RSI oversold conditions).
-3. If analyzing UK (.L) tickers, denote prices in £ (GBP) and highlight energy/commodity/banking drivers where relevant.
+Structure your Discord report cleanly:
+1. 🚨 **Regime Shift & Risk Bias:** (Risk-On / Risk-Off / Liquidation warning)
+2. 💻 **Nasdaq & S&P 500 Outlook:** (Tech concentration, bond yield pressure)
+3. 🏰 **European Anchors (FTSE 100 & DAX):** (Divergence, macro tailwinds/drags)
+4. ⚡ **Indicator Warning Triggers:** (Price action or news catalyst to watch)
 
-Market Watchlist / Scan Data:
+CRITICAL: Keep your total response under 900 characters so it fits Discord limits.
+
+Data:
 {watchlist_data}
 """
     elif args.focus == "catalyst":
+        max_output_length = 1300
         prompt = f"""
 You are an expert market analyst. Evaluate the market data, news, and fundamentals below.
-Generate a concise Discord report split strictly into TWO sections with 5 top picks each. Keep descriptions brief and under 15 words per pick so they fit within output limits:
+Generate a concise Discord report split strictly into TWO sections with 5 top picks each (max 15 words per pick):
 
 ⚡ TOP 5 DAY TRADE CATALYSTS (Intraday Volatility / Earnings / Gappers)
 1. $TICKER - [Bias: Long/Short] - Brief reason & trigger level
@@ -58,34 +62,33 @@ Generate a concise Discord report split strictly into TWO sections with 5 top pi
 4. $TICKER - [Bias: Bullish/Bearish] - Brief thesis & key level
 5. $TICKER - [Bias: Bullish/Bearish] - Brief thesis & key level
 
-Market Watchlist / Scan Data:
+Data:
 {watchlist_data}
 """
-    elif args.focus == "index-macro":
+    elif args.focus == "macro":
+        max_output_length = 1500
         prompt = f"""
-You are a senior institutional macro risk manager. Analyze the current global index benchmarks and market data below. 
-Your objective is to predict macro shifts, sector liquidations, or risk-off rotations across the **Nasdaq, S&P 500, FTSE 100, and DAX**.
+You are an expert global macro and swing trader analyzing a mixed universe of US and UK (FTSE 100) equities.
+Analyze the market watch list and provide a high-level macro prep report for the upcoming week.
 
-Structure your Discord report into these concise sections:
-1. 🚨 **Regime Shift & Risk Bias:** (State whether markets are facing Risk-On, Risk-Off, or Liquidation warning)
-2. 💻 **Nasdaq & S&P 500 Outlook:** (Tech concentration, bond yield pressures, impending sell-off or dip-buying triggers)
-3. 🏰 **European Anchors (FTSE 100 & DAX):** (Divergence against US markets, commodity/export tailwinds or domestic macro drags)
-4. ⚡ **Indicator Warning Triggers:** (What specific price action or news catalyst will trigger the next major swing)
+Key Instructions:
+1. Identify major macro themes (Tech vs. Energy/Commodities, Rate Divergence, Defensive Growth).
+2. Note key technical levels (20-day breakouts, RSI oversold).
+3. For UK (.L) tickers, denote prices in £ (GBP) and highlight energy/commodity/banking drivers.
 
-Keep formatting clean and tightly under 1,400 characters for Discord delivery.
-
-Market Benchmarks & Data:
+Data:
 {watchlist_data}
 """
-    else:
+    else:  # Day Trading / Default
+        max_output_length = 1500
         prompt = f"""
-You are a professional day trading assistant. Review the following intraday setup candidates and volume scans. Provide tactical entries, risk management context, and catalyst notes.
+You are a professional day trading assistant. Review the intraday setup candidates and volume scans below. Provide tactical entries, risk management context, and catalyst notes.
 
-Market Watchlist / Scan Data:
+Data:
 {watchlist_data}
 """
 
-    # Initialize GenAI Client using the official Google GenAI SDK
+    # Initialize GenAI Client
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("Error: GEMINI_API_KEY environment variable not set.")
@@ -93,7 +96,7 @@ Market Watchlist / Scan Data:
 
     client = genai.Client(api_key=api_key)
 
-    # Model fallback sequence with exponential backoff retries
+    # Model fallback sequence with backoff
     models = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"]
     max_retries = 3
     backoff_factor = 12
@@ -117,14 +120,17 @@ Market Watchlist / Scan Data:
                     print(f"Retrying in {sleep_time}s...")
                     time.sleep(sleep_time)
                 else:
-                    print(f"Exhausted retries for {model}. Falling back to next model...")
+                    print(f"Exhausted retries for {model}. Falling back...")
         if response_text:
             break
 
     if response_text:
+        # Enforce focus-specific safety truncation so Discord never rejects it
+        if len(response_text) > max_output_length:
+            response_text = response_text[:max_output_length] + "\n\n*(Report truncated to fit Discord limits)*"
         print(response_text)
     else:
-        print("❌ All Gemini models and fallback attempts failed to generate analysis.")
+        print("❌ All Gemini models failed to generate analysis.")
 
 if __name__ == "__main__":
     analyze_market()
