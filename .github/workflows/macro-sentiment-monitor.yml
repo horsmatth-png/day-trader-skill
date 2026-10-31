@@ -23,15 +23,28 @@ jobs:
           pip install google-genai yfinance
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Fetch Index & Macro Data
+      - name: Fetch Clean Index & Macro Data
         run: |
           mkdir -p trader
-          echo "=== GLOBAL INDEX MACRO SCAN ===" > scan_out.txt
+          # Generate clean market metrics summary without stderr library warnings
           python3 -c "
+          import warnings
+          warnings.filterwarnings('ignore')
+
           import yfinance as yf
           import json
-          indices = {'Nasdaq (QQQ)': 'QQQ', 'S&P 500 (SPY)': 'SPY', 'FTSE 100 (.L)': 'ISF.L', 'DAX (EWG)': 'EWG', 'Volatility (VIX)': '^VIX'}
+
+          indices = {
+              'Nasdaq (QQQ)': 'QQQ',
+              'S&P 500 (SPY)': 'SPY',
+              'FTSE 100 (.L)': 'ISF.L',
+              'DAX (EWG)': 'EWG',
+              'Volatility (VIX)': '^VIX'
+          }
+          
           data = {}
+          summary_lines = ['=== GLOBAL INDEX METRICS ===']
+          
           for name, ticker in indices.items():
               t = yf.Ticker(ticker)
               hist = t.history(period='5d')
@@ -40,10 +53,16 @@ jobs:
                   prev = hist['Close'].iloc[-2]
                   pct = (latest / prev - 1) * 100
                   data[name] = {'price': round(latest, 2), 'change_pct': round(pct, 2)}
+                  
+                  sign = '+' if pct >= 0 else ''
+                  summary_lines.append(f'{name:<18} | Price: {latest:>8.2f} | Chg: {sign}{pct:.2f}%')
+
           with open('trader/watchlist.json', 'w') as f:
               json.dump(data, f, indent=2)
-          print(json.dumps(data, indent=2))
-          " >> scan_out.txt 2>&1 || true
+
+          with open('scan_out.txt', 'w') as f:
+              f.write('\n'.join(summary_lines))
+          " 2>/dev/null || true
 
       - name: Run Gemini Macro Shift & Sentiment Analysis
         env:
@@ -60,7 +79,7 @@ jobs:
             exit 1
           fi
 
-          echo "Posting Part 1: Header & Scan Summary..."
+          echo "Posting Part 1: Clean Market Metrics..."
           header="🌐 **Global Index Macro & Sentiment Report ($(date '+%a %b %d'))**"
           scan_summary=$(cat scan_out.txt 2>/dev/null | head -c 1700 || echo "No scan summary available")
           part1_msg=$(printf '%s\n\n```\n%s\n```' "$header" "$scan_summary")
@@ -69,10 +88,10 @@ jobs:
             | curl -s -w "\nHTTP Status: %{http_code}\n" -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL")
           echo "$res1"
 
-          # 1-second pause to respect Discord rate limits
+          # Pause 1 second to observe rate limits
           sleep 1
 
-          echo "Posting Part 2: AI Macro Sentiment Analysis..."
+          echo "Posting Part 2: AI Macro Sentiment Summary..."
           ai_report=$(cat ai_out.txt 2>/dev/null | head -c 1800 || echo "No AI analysis output generated")
 
           res2=$(jq -n --arg c "$ai_report" '{content: $c}' \
