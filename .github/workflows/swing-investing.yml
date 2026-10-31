@@ -1,22 +1,14 @@
-name: Swing Trading & Macro Investing Analysis
+name: Swing Investing & Macro Strategy
 
 on:
   schedule:
-    - cron: '0 22 * * 0'     # Runs every Sunday at 10:00 PM UTC (pre-week macro prep)
+    - cron: '0 12 * * 1'      # Mondays at 12:00 PM UTC
   workflow_dispatch:
-    inputs:
-      focus:
-        description: 'Analysis Focus'
-        type: choice
-        options:
-          - macro-swings
-          - long-term-fundamentals
-        default: macro-swings
 
 jobs:
-  swing-analysis:
+  swing-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -24,39 +16,38 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-genai
+          pip install google-genai yfinance
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run Macro & Fundamental Screening
+      - name: Run Swing Scanner
         run: |
-          echo "=== MACRO & SWING SETUP SCAN ===" > scan_out.txt
-          # 1. Build the stock universe (creates trader/universe.txt)
-          python3 trader-scanner/scan.py universe >> scan_out.txt 2>&1 || true
+          mkdir -p trader
+          python3 scan.py swing > scan_out.txt 2>/dev/null || true
 
-          # 2. Run the scanner to populate trader/watchlist.json
-          python3 trader-scanner/scan.py daily --show 10 >> scan_out.txt 2>&1 || true
-
-      - name: Run Gemini Macro & Swing Intelligence
+      - name: Run Gemini Macro Analysis
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python3 trader-news/ai_analyze.py --focus macro > ai_out.txt 2>&1 || true
+          python3 trader-news/ai_analyze.py --focus macro > ai_out.txt 2>/dev/null || true
 
-      - name: Post Swing/Macro Report to Discord
+      - name: Post Swing Report to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
-          
-          # Safely trim outputs to guarantee staying within Discord's 2000-character limit
-          scan_summary=$(tail -n 12 scan_out.txt | head -n 8)
-          ai_report=$(cat ai_out.txt | head -c 1600)
-          header="📈 Swing & Macro Prep Report ($(date '+%a %b %d'))"
-          
-          formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
-          
-          jq -n --arg c "$formatted_msg" '{content: $c}' \
-            | curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+          header="📈 **Swing Trading & Macro Strategy Report ($(date '+%a %b %d'))**"
+          scan_summary=$(cat scan_out.txt 2>/dev/null | head -c 1700 || echo "No scan data available")
+          part1_msg=$(printf '%s\n\n```\n%s\n```' "$header" "$scan_summary")
+
+          jq -n --arg c "$part1_msg" '{content: $c}' \
+            | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+          sleep 1
+
+          ai_report=$(cat ai_out.txt 2>/dev/null | head -c 1800 || echo "No AI analysis generated")
+          jq -n --arg c "$ai_report" '{content: $c}' \
+            | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
