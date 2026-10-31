@@ -2,8 +2,8 @@ name: Global Macro & Index Sentiment Monitor
 
 on:
   schedule:
-    - cron: '15 7 * * 1-5'    # Runs at 7:15 AM UTC (European Open)
-    - cron: '15 12 * * 1-5'   # Runs at 12:15 PM UTC (US Pre-Market)
+    - cron: '15 7 * * 1-5'    # 7:15 AM UTC (European Open)
+    - cron: '15 12 * * 1-5'   # 12:15 PM UTC (US Pre-Market)
   workflow_dispatch:
 
 jobs:
@@ -51,17 +51,30 @@ jobs:
         run: |
           python3 trader-news/ai_analyze.py --focus index-macro > ai_out.txt 2>&1 || true
 
-      - name: Post Macro Sentiment Report to Discord
+      - name: Post Multi-Part Macro Sentiment Report to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
-          
-          scan_summary=$(cat scan_out.txt | head -n 12)
-          ai_report=$(cat ai_out.txt | head -c 1500)
-          header="🌐 Global Index Macro & Sentiment Shift Report ($(date '+%a %b %d'))"
-          
-          formatted_msg=$(printf '%s\n\n```\n%s\n```\n\n%s' "$header" "$scan_summary" "$ai_report")
-          
-          jq -n --arg c "$formatted_msg" '{content: $c}' \
-            | curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "❌ Missing DISCORD_WEBHOOK_URL secret"
+            exit 1
+          fi
+
+          echo "Posting Part 1: Header & Scan Summary..."
+          header="🌐 **Global Index Macro & Sentiment Report ($(date '+%a %b %d'))**"
+          scan_summary=$(cat scan_out.txt 2>/dev/null | head -c 1700 || echo "No scan summary available")
+          part1_msg=$(printf '%s\n\n```\n%s\n```' "$header" "$scan_summary")
+
+          res1=$(jq -n --arg c "$part1_msg" '{content: $c}' \
+            | curl -s -w "\nHTTP Status: %{http_code}\n" -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL")
+          echo "$res1"
+
+          # 1-second pause to respect Discord rate limits
+          sleep 1
+
+          echo "Posting Part 2: AI Macro Sentiment Analysis..."
+          ai_report=$(cat ai_out.txt 2>/dev/null | head -c 1800 || echo "No AI analysis output generated")
+
+          res2=$(jq -n --arg c "$ai_report" '{content: $c}' \
+            | curl -s -w "\nHTTP Status: %{http_code}\n" -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL")
+          echo "$res2"
