@@ -26,6 +26,12 @@ jobs:
         run: |
           mkdir -p trader
           python3 scan.py catalyst > scan_out.txt 2>/dev/null || true
+          # BRIDGE: Ensure scan output is written to trader/watchlist.json for Gemini
+          if [ -s scan_out.txt ]; then
+            cat scan_out.txt > trader/watchlist.json
+          else
+            echo "No scan data generated" > trader/watchlist.json
+          fi
 
       - name: Run Gemini Catalyst Analysis
         env:
