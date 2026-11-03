@@ -40,52 +40,50 @@ Structure your Discord report cleanly:
 3. 🏰 **European Anchors (FTSE 100 & DAX):** (Divergence, macro tailwinds/drags)
 4. ⚡ **Indicator Warning Triggers:** (Price action or news catalyst to watch)
 
-Data:
+Live Data:
 {watchlist_data}
 """
     elif args.focus == "catalyst":
         max_output_length = 1500
         prompt = f"""
-You are an expert market analyst. Evaluate the market data, news, and fundamentals below.
-Generate a concise Discord report split strictly into TWO sections with 5 top picks each (max 15 words per pick):
+You are an expert market analyst. Evaluate the live market scan data provided below.
+Generate a concise Discord report split strictly into TWO sections. 
 
-⚡ TOP 5 DAY TRADE CATALYSTS (Intraday Volatility / Earnings / Gappers)
-1. $TICKER - [Bias: Long/Short] - Brief reason & trigger level
-2. $TICKER - [Bias: Long/Short] - Brief reason & trigger level
-3. $TICKER - [Bias: Long/Short] - Brief reason & trigger level
-4. $TICKER - [Bias: Long/Short] - Brief reason & trigger level
-5. $TICKER - [Bias: Long/Short] - Brief reason & trigger level
+CRITICAL INSTRUCTIONS: 
+- Do NOT use mock, fake, or hardcoded prices. 
+- Use ONLY the actual current prices and tickers found in the live data payload below to calculate relative trigger levels.
 
-📈 TOP 5 SWING TRADE CATALYSTS (Multi-Day Fundamental & Macro Mispricings)
-1. $TICKER - [Bias: Bullish/Bearish] - Brief thesis & key level
-2. $TICKER - [Bias: Bullish/Bearish] - Brief thesis & key level
-3. $TICKER - [Bias: Bullish/Bearish] - Brief thesis & key level
-4. $TICKER - [Bias: Bullish/Bearish] - Brief thesis & key level
-5. $TICKER - [Bias: Bullish/Bearish] - Brief thesis & key level
+⚡ TOP 5 DAY TRADE CATALYSTS (Intraday Volatility / Gappers)
+Format each pick as: 
+1. $TICKER - [Bias: Long/Short] - Live Price & brief reason/trigger level
 
-Data:
+📈 TOP 5 SWING TRADE CATALYSTS (Multi-Day Framework)
+Format each pick as: 
+1. $TICKER - [Bias: Bullish/Bearish] - Live Price & brief thesis/key level
+
+Live Scan Data:
 {watchlist_data}
 """
     elif args.focus == "macro":
         max_output_length = 1500
         prompt = f"""
 You are an expert global macro and swing trader analyzing a mixed universe of US and UK equities.
-Analyze the market watch list and provide a high-level macro prep report for the upcoming week.
+Analyze the market watch list and provide a high-level macro prep report for the upcoming week using the live data.
 
 Key Instructions:
 1. Identify major macro themes (Tech vs. Energy/Commodities, Rate Divergence, Defensive Growth).
-2. Note key technical levels (20-day breakouts, RSI oversold).
-3. For UK tickers, denote prices in £ (GBP) and highlight energy/commodity/banking drivers.
+2. Note key technical levels relative to current live prices.
+3. For UK tickers, denote prices in £ (GBP).
 
-Data:
+Live Data:
 {watchlist_data}
 """
     else:
         max_output_length = 1500
         prompt = f"""
-You are a professional day trading assistant. Review the intraday setup candidates and volume scans below. Provide tactical entries, risk management context, and catalyst notes.
+You are a professional day trading assistant. Review the intraday setup candidates and volume scans below. Provide tactical entries, risk management context, and catalyst notes using ONLY the live market prices provided.
 
-Data:
+Live Data:
 {watchlist_data}
 """
 
