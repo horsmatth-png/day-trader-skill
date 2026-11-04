@@ -57,7 +57,6 @@ def analyze_market():
         except Exception:
             pass
 
-    # Select dynamic prompt based on focus parameter
     if args.focus == "index-macro":
         prompt = f"You are a senior institutional macro risk manager. Analyze these global index benchmarks and give a concise Discord report:\n{watchlist_json_str}"
     
@@ -77,7 +76,7 @@ def analyze_market():
             f"LIVE BENCHMARK METRICS:\n{watchlist_json_str}\n\n"
             f"Provide a concise Discord report titled '💎 TOP FORWARD VALUE & GARP PROSPECTS'. "
             f"Select the top 3-4 stocks from the fundamental screen with the strongest forward risk/reward (considering P/E, P/S, ROE vs price). "
-            f"For each pick, give a bullet point detailing key fundamental strengths and strategic accumulation zone."
+            f"For each pick, give maximum 2 bullet points detailing key fundamental strengths and strategic accumulation zone."
         )
     
     elif args.focus == "target":
@@ -96,10 +95,9 @@ def analyze_market():
             f"You are a Senior Trading Strategist & Quantitative Risk Officer. "
             f"Review these technical levels, daily ATR targets, and fundamental valuations for our 10-asset custom basket:\n\n"
             f"{target_json_str}\n\n"
-            f"Provide a concise Discord report titled '🎯 DAILY TARGETS & MACRO OVERVIEW'. "
-            f"1. **Macro & Index Bias**: Detail expectations for FTSE 100 (^FTSE), NQ Futures (NQ=F), SPY, QQQ, and VUSA.L.\n"
-            f"2. **Top Stock Setups**: Highlight high-level Bullish/Bearish target setups among GOOGL, AMZN, TSLA, AAPL, and BP.L.\n"
-            f"Keep this overview concise (under 1300 characters) so full execution details can follow in the next message."
+            f"Provide a concise Discord report titled '🎯 DAILY TARGETS & MACRO OVERVIEW'.\n"
+            f"1. **Macro & Index Bias**: 2 short bullet points on FTSE 100 (^FTSE), NQ Futures (NQ=F), SPY, QQQ, VUSA.L.\n"
+            f"2. **Top Stock Setups**: 2 short bullet points highlighting top Bullish and Bearish target setups among GOOGL, AMZN, TSLA, AAPL, BP.L."
         )
 
     elif args.focus == "execution":
@@ -118,12 +116,11 @@ def analyze_market():
             f"You are a Senior Quantitative Execution Trader. "
             f"Using these calculated pivot levels, ATR expansion targets, and support/resistance data:\n\n"
             f"{target_json_str}\n\n"
-            f"Provide a detailed Discord report titled '⚙️ TACTICAL EXECUTION PLAN & RISK/REWARD'. "
-            f"Focus deeply on tactical execution for key movers (e.g. AMZN, TSLA, AAPL, GOOGL):\n"
-            f"• Exact Entry Triggers & Pivot Tests\n"
-            f"• Stop-Loss Placement (Pivot / S1 / R1 levels)\n"
-            f"• ATR Expansion Target Targets & Risk:Reward Ratios\n"
-            f"Write complete sentences without cutting off mid-word."
+            f"Provide a punchy Discord report titled '⚙️ TACTICAL EXECUTION PLAN'.\n"
+            f"For each key mover (e.g. AMZN, TSLA, AAPL, GOOGL), limit your output to EXACTLY 2 bullet points:\n"
+            f"• Bullet 1: Entry Trigger & Stop-Loss Placement (Pivot / S1 / R1 levels)\n"
+            f"• Bullet 2: ATR Profit Target & Risk:Reward Ratio\n"
+            f"Keep text tight and ultra-concise."
         )
     
     else:
@@ -154,8 +151,6 @@ def analyze_market():
             continue
 
     if response_text:
-        if len(response_text) > 1800:
-            response_text = response_text[:1800] + "\n\n*(Report truncated to fit Discord limits)*"
         print(response_text)
     else:
         print("⚠️ **AI Generation Notice**\n\n=== LIVE MARKET METRICS FALLBACK ===\n" + watchlist_json_str)
