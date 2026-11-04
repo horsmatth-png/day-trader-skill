@@ -28,11 +28,15 @@ jobs:
           mkdir -p trader
           python3 trader-scanner/screen_targets.py
 
-      - name: Run Gemini Target Projections
+      - name: Run Gemini Target Projections & Execution Plan
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
+          # 1. Macro & Target Overview
           python3 trader-news/ai_analyze.py --focus target > ai_targets_out.txt 2>/dev/null || true
+          
+          # 2. Tactical Execution Details
+          python3 trader-news/ai_analyze.py --focus execution > ai_execution_out.txt 2>/dev/null || true
 
       - name: Post Daily Targets to Discord
         env:
@@ -40,11 +44,18 @@ jobs:
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
 
+          # Message 1: Quantitative Target Matrix Table
           header="🎯 **Daily Target & Pivot Matrix ($(date '+%a %b %d'))**"
           target_summary=$(cat targets_out.txt 2>/dev/null | head -c 1700 || echo "No target data available")
           msg1=$(printf '%s\n\n```\n%s\n```' "$header" "$target_summary")
           jq -n --arg c "$msg1" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
           sleep 1.5
 
+          # Message 2: Gemini AI Macro & Target Overview
           ai_report=$(cat ai_targets_out.txt 2>/dev/null | head -c 1800 || echo "No AI target analysis generated")
           jq -n --arg c "$ai_report" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+          sleep 1.5
+
+          # Message 3: Gemini AI Dedicated Execution Plan & Risk:Reward
+          exec_report=$(cat ai_execution_out.txt 2>/dev/null | head -c 1800 || echo "No execution plan generated")
+          jq -n --arg c "$exec_report" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
