@@ -22,10 +22,11 @@ jobs:
           pip install google-genai yfinance
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run Swing Scanner
+      - name: Run Swing Scanner & Broader Fundamental Screening
         run: |
           mkdir -p trader
           python3 scan.py swing > scan_out.txt 2>/dev/null || true
+          
           # BRIDGE: Ensure scan output is written to trader/watchlist.json for Gemini
           if [ -s scan_out.txt ]; then
             cat scan_out.txt > trader/watchlist.json
@@ -33,27 +34,84 @@ jobs:
             echo "No scan data generated" > trader/watchlist.json
           fi
 
+          # Broad Market Fundamental Screen (Reads from trader/universe.txt or falls back to major large caps)
+          python3 -c '
+          import yfinance as yf, json, os
+
+          symbols = []
+          if os.path.exists("trader/universe.txt"):
+              with open("trader/universe.txt", "r") as f:
+                  symbols = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+          
+          # Fallback if universe file is empty/missing
+          if not symbols:
+              symbols = ["NVDA", "TSLA", "AAPL", "AMD", "META", "MSFT", "GOOGL", "AMZN", "JPM", "V", "NFLX", "AVGO", "COST", "PEP", "ADBE", "CRM", "AMD", "INTC", "QCOM", "TXN"]
+
+          # Limit to first 40 symbols to keep GitHub Action runtime fast and avoid rate limits
+          symbols = symbols[:40]
+          results = []
+
+          for sym in symbols:
+              try:
+                  info = yf.Ticker(sym).info
+                  pe = info.get("trailingPE")
+                  ps = info.get("priceToSalesTrailing12Months")
+                  roe = info.get("returnOnEquity")
+                  price = info.get("currentPrice") or info.get("regularMarketPrice")
+                  
+                  # Filter for positive earnings, reasonable P/E, and attractive P/S ratios
+                  if pe and ps and price and pe > 0 and ps > 0:
+                      results.append({
+                          "symbol": sym, 
+                          "price": price, 
+                          "pe": round(pe, 2), 
+                          "ps": round(ps, 2), 
+                          "roe": round(roe * 100, 1) if roe else 0
+                      })
+              except Exception:
+                  continue
+          
+          # Sort by lowest Price-to-Sales (best fundamental value alignment)
+          results.sort(key=lambda x: x["ps"])
+          
+          out = ["=== BROAD MARKET VALUE & GARP PROSPECTS ==="]
+          for r in results[:8]:
+              out.append(f"${r[\"symbol\"]:<6} | Price: ${r[\"price\"]:>7.2f} | P/E: {r[\"pe\"]:>6.1f} | P/S: {r[\"ps\"]:>5.2f} | ROE: {r[\"roe\"]}%")
+          
+          if len(out) == 1:
+              out.append("No fundamental metrics retrieved in this batch.")
+
+          with open("fundamentals_out.txt", "w") as f:
+              f.write("\n".join(out))
+          print("\n".join(out))
+          '
+
       - name: Run Gemini Macro Analysis
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python3 trader-news/ai_analyze.py --focus macro > ai_out.txt 2>/dev/null || true
 
-      - name: Post Swing Report to Discord
+      - name: Post Swing Report to Discord (Multi-Message Split)
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
 
-          header="📈 **Swing Trading & Macro Strategy Report ($(date '+%a %b %d'))**"
+          # 1. Post Scan Metrics Summary
+          header="📈 **Swing Trading & Market Metrics ($(date '+%a %b %d'))**"
           scan_summary=$(cat scan_out.txt 2>/dev/null | head -c 1700 || echo "No scan data available")
-          part1_msg=$(printf '%s\n\n```\n%s\n```' "$header" "$scan_summary")
+          msg1=$(printf '%s\n\n```\n%s\n```' "$header" "$scan_summary")
+          jq -n --arg c "$msg1" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+          sleep 1.5
 
-          jq -n --arg c "$part1_msg" '{content: $c}' \
-            | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+          # 2. Post Broad Market Value Prospects Section
+          fund_header="💎 **Broad Market Value & Valuation Prospects (P/E & P/S Filters)**"
+          fund_summary=$(cat fundamentals_out.txt 2>/dev/null | head -c 1700 || echo "No fundamentals data available")
+          msg2=$(printf '%s\n\n```\n%s\n```' "$fund_header" "$fund_summary")
+          jq -n --arg c "$msg2" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+          sleep 1.5
 
-          sleep 1
-
+          # 3. Post AI Strategy Report
           ai_report=$(cat ai_out.txt 2>/dev/null | head -c 1800 || echo "No AI analysis generated")
-          jq -n --arg c "$ai_report" '{content: $c}' \
-            | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+          jq -n --arg c "$ai_report" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
