@@ -26,24 +26,27 @@ jobs:
         run: |
           mkdir -p trader
           
-          # 1. Run technical scan script in trader-scanner/
+          # Technical scan
           python3 trader-scanner/scan.py swing > scan_out.txt 2>/dev/null || true
           
-          # BRIDGE: Sync scan output into trader/watchlist.json for Gemini AI consumption
           if [ -s scan_out.txt ]; then
             cat scan_out.txt > trader/watchlist.json
           else
             echo "No scan data generated" > trader/watchlist.json
           fi
 
-          # 2. Run fundamental scanner located inside trader-scanner/
+          # Fundamental screen
           python3 trader-scanner/screen_fundamentals.py
 
-      - name: Run Gemini Macro Analysis
+      - name: Run Gemini Macro & Value Prospect Analysis
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
+          # 1. Macro Analysis
           python3 trader-news/ai_analyze.py --focus macro > ai_out.txt 2>/dev/null || true
+          
+          # 2. Fundamental Value & Forward Options Assessment
+          python3 trader-news/ai_analyze.py --focus value > ai_value_out.txt 2>/dev/null || true
 
       - name: Post Swing & Fundamental Report to Discord
         env:
@@ -58,13 +61,18 @@ jobs:
           jq -n --arg c "$msg1" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
           sleep 1.5
 
-          # Part 2: Fundamental Valuation Screening
+          # Part 2: Fundamental Valuation Screening Table
           fund_header="💎 **Broad Market Value & Valuation Prospects (P/E & P/S Filters)**"
           fund_summary=$(cat fundamentals_out.txt 2>/dev/null | head -c 1700 || echo "No fundamentals data available")
           msg2=$(printf '%s\n\n```\n%s\n```' "$fund_header" "$fund_summary")
           jq -n --arg c "$msg2" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
           sleep 1.5
 
-          # Part 3: Gemini AI Macro Strategy Summary
-          ai_report=$(cat ai_out.txt 2>/dev/null | head -c 1800 || echo "No AI analysis generated")
+          # Part 3: Gemini AI Forward Value Assessment
+          ai_val_report=$(cat ai_value_out.txt 2>/dev/null | head -c 1800 || echo "No value analysis generated")
+          jq -n --arg c "$ai_val_report" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+          sleep 1.5
+
+          # Part 4: Gemini AI Macro Strategy Report
+          ai_report=$(cat ai_out.txt 2>/dev/null | head -c 1800 || echo "No AI macro analysis generated")
           jq -n --arg c "$ai_report" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
