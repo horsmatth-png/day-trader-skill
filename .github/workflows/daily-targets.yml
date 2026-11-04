@@ -1,6 +1,8 @@
 name: Daily Price Targets & Level Analysis
 
 on:
+  push:
+    branches: [ main ]
   schedule:
     - cron: '30 12 * * 1-5'
   workflow_dispatch:
@@ -20,7 +22,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install google-genai yfinance
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Compute Targets & Pivot Matrix
         run: |
@@ -39,13 +40,11 @@ jobs:
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then exit 0; fi
 
-          # Part 1: Quantitative Target Matrix Table
           header="🎯 **Daily Target & Pivot Matrix ($(date '+%a %b %d'))**"
           target_summary=$(cat targets_out.txt 2>/dev/null | head -c 1700 || echo "No target data available")
           msg1=$(printf '%s\n\n```\n%s\n```' "$header" "$target_summary")
           jq -n --arg c "$msg1" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
           sleep 1.5
 
-          # Part 2: Gemini AI Tactical Strategy Report
           ai_report=$(cat ai_targets_out.txt 2>/dev/null | head -c 1800 || echo "No AI target analysis generated")
           jq -n --arg c "$ai_report" '{content: $c}' | curl -s -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
