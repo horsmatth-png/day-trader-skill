@@ -46,12 +46,30 @@ def analyze_market():
 
     watchlist_json_str = json.dumps(watchlist_data, indent=2)
 
+    # Read fundamental output if present
+    fund_data = ""
+    if os.path.exists("fundamentals_out.txt"):
+        try:
+            with open("fundamentals_out.txt", "r") as f:
+                fund_data = f.read().strip()
+        except Exception:
+            pass
+
     if args.focus == "index-macro":
         prompt = f"You are a senior institutional macro risk manager. Analyze these global index benchmarks and give a concise Discord report:\n{watchlist_json_str}"
     elif args.focus == "catalyst":
         prompt = f"You are an expert market analyst. Generate a concise Discord report split into two sections (⚡ TOP 5 DAY TRADE CATALYSTS and 📈 TOP 5 SWING TRADE CATALYSTS) using ONLY these live prices:\n{watchlist_json_str}"
     elif args.focus == "macro":
         prompt = f"You are an expert global macro trader. Provide a high-level macro prep report using this live data:\n{watchlist_json_str}"
+    elif args.focus == "value":
+        prompt = (
+            f"You are a senior fundamental analyst & portfolio manager. Review these market valuation screeners and live prices:\n\n"
+            f"FUNDAMENTAL METRICS:\n{fund_data}\n\n"
+            f"LIVE BENCHMARK METRICS:\n{watchlist_json_str}\n\n"
+            f"Provide a concise Discord report titled '💎 TOP FORWARD VALUE & GARP PROSPECTS'. "
+            f"Select the top 3-4 stocks from the fundamental screen with the strongest forward risk/reward (considering P/E, P/S, ROE vs price). "
+            f"For each pick, give a bullet point detailing key fundamental strengths and strategic accumulation zone."
+        )
     else:
         prompt = f"You are a professional day trading assistant. Review these market scans and provide tactical entries and risk context:\n{watchlist_json_str}"
 
@@ -62,10 +80,10 @@ def analyze_market():
 
     client = genai.Client(api_key=api_key)
     
-    # Cascading fallback model list to handle rate limits gracefully
+    # Priority rotation: Flash-Lite first for stability, followed by alternative tiers
     models_to_try = [
-        "gemini-3.8-flash",
         "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
         "gemini-flash-latest"
     ]
     
@@ -77,10 +95,6 @@ def analyze_market():
                 response_text = response.text
                 break
         except Exception as e:
-            err_str = str(e)
-            # If it's a rate limit or resource exhausted issue, try the next model model tier
-            if "429" in err_str or "ResourceExhausted" in err_str or "quota" in err_str.lower():
-                continue
             continue
 
     if response_text:
@@ -88,8 +102,7 @@ def analyze_market():
             response_text = response_text[:1500] + "\n\n*(Report truncated)*"
         print(response_text)
     else:
-        # Graceful fallback: outputs market pricing summary if quota is completely exhausted
-        print("⚠️ **AI Quota Resting (Rate Limit Reached)**\n\n=== LIVE MARKET METRICS FALLBACK ===\n" + watchlist_json_str)
+        print("⚠️ **AI Generation Notice**\n\n=== LIVE MARKET METRICS FALLBACK ===\n" + watchlist_json_str)
 
 if __name__ == "__main__":
     analyze_market()
