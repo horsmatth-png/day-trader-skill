@@ -2,7 +2,7 @@ name: Daily Price Targets & Level Analysis
 
 on:
   schedule:
-    - cron: '30 12 * * 1-5'    # Monday to Friday pre-market at 12:30 PM UTC
+    - cron: '30 12 * * 1-5'
   workflow_dispatch:
 
 jobs:
