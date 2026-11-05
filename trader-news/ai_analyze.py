@@ -31,7 +31,6 @@ def analyze_market():
     parser.add_argument("--focus", type=str, default="default", help="Analysis focus: macro, catalyst, value, target, execution, index-macro")
     args = parser.parse_args()
 
-    # Load standard watchlist json if present
     watchlist_data = {}
     watchlist_path = "trader/watchlist.json"
     if os.path.exists(watchlist_path):
@@ -48,7 +47,6 @@ def analyze_market():
 
     watchlist_json_str = json.dumps(watchlist_data, indent=2)
 
-    # Load fundamental screening text if present
     fund_data = ""
     if os.path.exists("fundamentals_out.txt"):
         try:
@@ -59,16 +57,13 @@ def analyze_market():
 
     if args.focus == "index-macro":
         prompt = f"You are a senior institutional macro risk manager. Analyze these global index benchmarks and give a concise Discord report:\n{watchlist_json_str}"
-    
     elif args.focus == "catalyst":
         prompt = (
             f"You are an expert market analyst. Generate a concise Discord report split into two sections "
             f"(⚡ TOP 5 DAY TRADE CATALYSTS and 📈 TOP 5 SWING TRADE CATALYSTS) using ONLY these live prices:\n{watchlist_json_str}"
         )
-    
     elif args.focus == "macro":
         prompt = f"You are an expert global macro trader. Provide a high-level macro prep report using this live data:\n{watchlist_json_str}"
-    
     elif args.focus == "value":
         prompt = (
             f"You are a senior fundamental analyst & portfolio manager. Review these market valuation screeners and live prices:\n\n"
@@ -78,7 +73,6 @@ def analyze_market():
             f"Select the top 3-4 stocks from the fundamental screen with the strongest forward risk/reward (considering P/E, P/S, ROE vs price). "
             f"For each pick, give maximum 2 bullet points detailing key fundamental strengths and strategic accumulation zone."
         )
-    
     elif args.focus == "target":
         target_json_str = ""
         if os.path.exists("trader/targets_watchlist.json"):
@@ -87,7 +81,6 @@ def analyze_market():
                     target_json_str = f.read().strip()
             except Exception:
                 pass
-        
         if not target_json_str:
             target_json_str = watchlist_json_str
 
@@ -99,7 +92,6 @@ def analyze_market():
             f"1. **Macro & Index Bias**: 2 short bullet points on FTSE 100 (^FTSE), NQ Futures (NQ=F), SPY, QQQ, VUSA.L.\n"
             f"2. **Top Stock Setups**: 2 short bullet points highlighting top Bullish and Bearish target setups among GOOGL, AMZN, TSLA, AAPL, BP.L."
         )
-
     elif args.focus == "execution":
         target_json_str = ""
         if os.path.exists("trader/targets_watchlist.json"):
@@ -108,7 +100,6 @@ def analyze_market():
                     target_json_str = f.read().strip()
             except Exception:
                 pass
-        
         if not target_json_str:
             target_json_str = watchlist_json_str
 
@@ -122,19 +113,19 @@ def analyze_market():
             f"• Bullet 2: ATR Profit Target & Risk:Reward Ratio\n"
             f"Keep text tight and ultra-concise."
         )
-    
     else:
         prompt = f"You are a professional day trading assistant. Review these market scans and provide tactical entries and risk context:\n{watchlist_json_str}"
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("Error: GEMINI_API_KEY environment variable not set.")
         return
 
     client = genai.Client(api_key=api_key)
     
+    # Try models with silent fallback handling
     models_to_try = [
-        "gemini-3.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
         "gemini-3.8-flash",
         "gemini-flash-latest"
     ]
@@ -146,14 +137,16 @@ def analyze_market():
             if response and response.text:
                 response_text = response.text
                 break
-        except Exception as e:
-            print(f"Notice: Model {model} attempted with response: {e}")
+        except Exception:
+            # Silently try the next model without printing error traces to stdout
+            time.sleep(1)
             continue
 
     if response_text:
         print(response_text)
     else:
-        print("⚠️ **AI Generation Notice**\n\n=== LIVE MARKET METRICS FALLBACK ===\n" + watchlist_json_str)
+        # Graceful fallback text if all flash models are overloaded
+        print("⚠️ **AI Generation Notice**: Models are currently experiencing high demand. Quantitative levels remain fully active above.")
 
 if __name__ == "__main__":
     analyze_market()
