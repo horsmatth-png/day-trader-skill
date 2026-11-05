@@ -122,7 +122,6 @@ def analyze_market():
 
     client = genai.Client(api_key=api_key)
     
-    # Try models with silent fallback handling
     models_to_try = [
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
@@ -131,21 +130,25 @@ def analyze_market():
     ]
     
     response_text = None
-    for model in models_to_try:
-        try:
-            response = client.models.generate_content(model=model, contents=prompt)
-            if response and response.text:
-                response_text = response.text
-                break
-        except Exception:
-            # Silently try the next model without printing error traces to stdout
-            time.sleep(1)
-            continue
+    
+    # Retry across model list 3 full times with delays between attempts
+    for attempt in range(3):
+        for model in models_to_try:
+            try:
+                response = client.models.generate_content(model=model, contents=prompt)
+                if response and response.text:
+                    response_text = response.text
+                    break
+            except Exception:
+                time.sleep(2)  # Pause 2s before testing next model tag
+                continue
+        if response_text:
+            break
+        time.sleep(5)  # Pause 5s before repeating the model loop
 
     if response_text:
         print(response_text)
     else:
-        # Graceful fallback text if all flash models are overloaded
         print("⚠️ **AI Generation Notice**: Models are currently experiencing high demand. Quantitative levels remain fully active above.")
 
 if __name__ == "__main__":
