@@ -2,12 +2,14 @@
 import os
 import json
 import time
+import random
 import argparse
 import warnings
 
 warnings.filterwarnings('ignore')
 import yfinance as yf
 from google import genai
+from google.genai import types
 
 def get_live_fallback_data():
     """Fallback ticker retriever if watchlist files are missing or empty."""
@@ -31,6 +33,7 @@ def analyze_market():
     parser.add_argument("--focus", type=str, default="default", help="Analysis focus: macro, catalyst, value, target, execution, index-macro")
     args = parser.parse_args()
 
+    # Load standard watchlist json if present
     watchlist_data = {}
     watchlist_path = "trader/watchlist.json"
     if os.path.exists(watchlist_path):
@@ -47,6 +50,7 @@ def analyze_market():
 
     watchlist_json_str = json.dumps(watchlist_data, indent=2)
 
+    # Load fundamental screening text if present
     fund_data = ""
     if os.path.exists("fundamentals_out.txt"):
         try:
@@ -120,18 +124,27 @@ def analyze_market():
     if not api_key:
         return
 
-    client = genai.Client(api_key=api_key)
-    
+    # Configure client HTTP options for automatic exponential backoff on 503 and 429 errors
+    http_opts = types.HttpOptions(
+        retry_options=types.HttpRetryOptions(
+            attempts=5,
+            initial_delay=2.0,
+            http_status_codes=[408, 429, 500, 502, 503, 504]
+        )
+    )
+
+    client = genai.Client(api_key=api_key, http_options=http_opts)
+
     models_to_try = [
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
         "gemini-3.8-flash",
         "gemini-flash-latest"
     ]
-    
+
     response_text = None
     
-    # Retry across model list 3 full times with delays between attempts
+    # Retry loop across model tags with backoff & jitter
     for attempt in range(3):
         for model in models_to_try:
             try:
@@ -140,16 +153,17 @@ def analyze_market():
                     response_text = response.text
                     break
             except Exception:
-                time.sleep(2)  # Pause 2s before testing next model tag
+                # Add jitter pause between model switches to avoid thundering herd on free tier
+                time.sleep(2 + random.uniform(0.5, 1.5))
                 continue
         if response_text:
             break
-        time.sleep(5)  # Pause 5s before repeating the model loop
+        time.sleep(5 + random.uniform(1.0, 2.0))
 
     if response_text:
         print(response_text)
     else:
-        print("⚠️ **AI Generation Notice**: Models are currently experiencing high demand. Quantitative levels remain fully active above.")
+        print("⚠️ **AI Generation Notice**: Free-tier API servers are experiencing high demand. Quantitative levels remain fully active above.")
 
 if __name__ == "__main__":
     analyze_market()
