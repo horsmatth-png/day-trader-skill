@@ -31,6 +31,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python3 trader-news/ai_analyze.py --focus target > ai_targets_out.txt 2>/dev/null || true
+          sleep 5
           python3 trader-news/ai_analyze.py --focus execution > ai_execution_out.txt 2>/dev/null || true
 
       - name: Post Daily Targets to Discord
