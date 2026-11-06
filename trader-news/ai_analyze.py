@@ -27,9 +27,21 @@ def get_live_fallback_data():
     return data
 
 def analyze_market():
-    parser = argparse.ArgumentParser(description="Multi-Model Strategy Engine with Guaranteed Output")
+    parser = argparse.ArgumentParser(description="Multi-Model Strategy Engine")
     parser.add_argument("--focus", type=str, default="default", help="Analysis focus: macro, catalyst, value, target, execution, index-macro")
     args = parser.parse_args()
+
+    watchlist_data = {}
+    if os.path.exists("trader/watchlist.json"):
+        try:
+            with open("trader/watchlist.json", "r") as f:
+                watchlist_data = json.loads(f.read().strip())
+        except Exception:
+            pass
+    if not watchlist_data:
+        watchlist_data = get_live_fallback_data()
+
+    watchlist_json_str = json.dumps(watchlist_data, indent=2)
 
     target_json_str = ""
     if os.path.exists("trader/targets_watchlist.json"):
@@ -38,28 +50,73 @@ def analyze_market():
                 target_json_str = f.read().strip()
         except Exception:
             pass
-
     if not target_json_str:
-        target_json_str = json.dumps(get_live_fallback_data(), indent=2)
+        target_json_str = watchlist_json_str
 
-    prompt = f"""
-You are a Senior Quantitative Trading Strategist. Review these technical pivot & ATR targets for our 10-asset basket:
+    fund_data = ""
+    if os.path.exists("fundamentals_out.txt"):
+        try:
+            with open("fundamentals_out.txt", "r") as f:
+                fund_data = f.read().strip()
+        except Exception:
+            pass
+
+    # Build prompt based on focus
+    if args.focus == "index-macro":
+        prompt = f"You are a senior institutional macro risk manager. Analyze these global index benchmarks and give a concise Discord report:\n{watchlist_json_str}"
+    elif args.focus == "catalyst":
+        prompt = (
+            f"You are an expert market analyst. Generate a concise Discord report split into two sections "
+            f"(⚡ TOP 5 DAY TRADE CATALYSTS and 📈 TOP 5 SWING TRADE CATALYSTS) using ONLY these live prices:\n{watchlist_json_str}"
+        )
+    elif args.focus == "macro":
+        prompt = f"You are an expert global macro trader. Provide a high-level macro prep report using this live data:\n{watchlist_json_str}"
+    elif args.focus == "value":
+        prompt = (
+            f"You are a senior fundamental analyst & portfolio manager. Review these market valuation screeners and live prices:\n\n"
+            f"FUNDAMENTAL METRICS:\n{fund_data}\n\n"
+            f"LIVE BENCHMARK METRICS:\n{watchlist_json_str}\n\n"
+            f"Provide a concise Discord report titled '💎 TOP FORWARD VALUE & GARP PROSPECTS'. "
+            f"Select the top 3-4 stocks from the fundamental screen with the strongest forward risk/reward (considering P/E, P/S, ROE vs price). "
+            f"For each pick, give maximum 2 bullet points detailing key fundamental strengths and strategic accumulation zone."
+        )
+    elif args.focus == "target":
+        prompt = (
+            f"You are a Senior Trading Strategist & Quantitative Risk Officer. "
+            f"Review these technical levels, daily ATR targets, and fundamental valuations for our 10-asset custom basket:\n\n"
+            f"{target_json_str}\n\n"
+            f"Provide a concise Discord report titled '🎯 DAILY TARGETS & MACRO OVERVIEW'.\n"
+            f"1. **Macro & Index Bias**: 2 short bullet points on FTSE 100 (^FTSE), NQ Futures (NQ=F), SPY, QQQ, VUSA.L.\n"
+            f"2. **Top Stock Setups**: 2 short bullet points highlighting top Bullish and Bearish target setups among GOOGL, AMZN, TSLA, AAPL, BP.L."
+        )
+    elif args.focus == "execution":
+        prompt = (
+            f"You are a Senior Quantitative Execution Trader. "
+            f"Using these calculated pivot levels, ATR expansion targets, and support/resistance data:\n\n"
+            f"{target_json_str}\n\n"
+            f"Provide a punchy Discord report titled '⚙️ TACTICAL EXECUTION PLAN'.\n"
+            f"For each key mover (e.g. AMZN, TSLA, AAPL, GOOGL), limit your output to EXACTLY 2 bullet points:\n"
+            f"• Bullet 1: Entry Trigger & Stop-Loss Placement (Pivot / S1 / R1 levels)\n"
+            f"• Bullet 2: ATR Profit Target & Risk:Reward Ratio\n"
+            f"Keep text tight and ultra-concise."
+        )
+    else:
+        prompt = f"""
+You are a Senior Quantitative Analyst. Review these technical pivot & ATR targets:
 {target_json_str}
 
-Provide a concise 2-part trade report. Use the exact split marker `===EXECUTION_SPLIT===` between Part 1 and Part 2.
+Generate a 2-part trade strategy report. Use the exact split marker `===EXECUTION_SPLIT===` between Part 1 and Part 2.
 
-PART 1:
-🎯 **DAILY TARGETS & MACRO OVERVIEW**
-- 2 bullet points on Index/Macro bias (^FTSE, NQ=F, SPY, QQQ).
-- 2 bullet points on top stock setups (GOOGL, AMZN, TSLA, AAPL, BP.L).
+PART 1 (Macro & High-Level Targets):
+Title: 🌐 **GLOBAL MACRO & TARGET OVERVIEW**
+- 2 bullet points covering Index/Macro sentiment (^FTSE, NQ=F, SPY, QQQ).
+- 2 bullet points on top bullish/bearish candidates.
 
 ===EXECUTION_SPLIT===
 
-PART 2:
-⚙️ **TACTICAL EXECUTION PLAN**
-For key tickers (AMZN, TSLA, AAPL, GOOGL), give EXACTLY 2 bullets each:
-• Entry Trigger & Stop-Loss (Pivot / S1 / R1)
-• ATR Target & Risk:Reward
+PART 2 (Tactical Execution Plan):
+Title: ⚙️ **TACTICAL EXECUTION PLAN**
+For each primary setup (AMZN, TSLA, AAPL, GOOGL), give EXACTLY 2 concise bullets.
 """
 
     response_text = None
@@ -96,33 +153,21 @@ For key tickers (AMZN, TSLA, AAPL, GOOGL), give EXACTLY 2 bullets each:
                 if chat_completion.choices and chat_completion.choices[0].message.content:
                     response_text = chat_completion.choices[0].message.content
             except Exception as e:
-                print(f"Groq error: {e}")
+                pass
 
-    # --- 3. Guaranteed Fallback Text so files are never empty ---
+    # --- 3. Output Handling ---
     if not response_text:
-        response_text = (
-            "🎯 **DAILY TARGETS & MACRO OVERVIEW**\n"
-            "- ⚠️ **API Notice**: Free-tier Gemini and Groq fallback models are temporarily rate-limited.\n"
-            "- Quantitative pivot levels and ATR bands displayed in the matrix above remain fully active for session execution.\n"
-            "===EXECUTION_SPLIT===\n"
-            "⚙️ **TACTICAL EXECUTION PLAN**\n"
-            "- Rely on standard S1/R1 pivot boundaries and 14-day ATR expansion targets calculated above.\n"
-            "- Monitor volume at key support and resistance handles for confirmation."
-        )
+        response_text = "⚠️ **AI Generation Notice**: Primary and fallback models are temporarily busy. Quantitative levels remain active above."
 
-    # Split and write out files so GitHub Actions posts them unconditionally
-    parts = response_text.split("===EXECUTION_SPLIT===")
-    
-    with open("ai_targets_out.txt", "w") as f:
-        f.write(parts[0].strip())
-    
-    if len(parts) > 1:
+    # Handle file splitting for default daily targets, print to stdout for focused workflows
+    if args.focus == "default" and "===EXECUTION_SPLIT===" in response_text:
+        parts = response_text.split("===EXECUTION_SPLIT===")
+        with open("ai_targets_out.txt", "w") as f:
+            f.write(parts[0].strip())
         with open("ai_execution_out.txt", "w") as f:
-            f.write(parts[1].strip())
-        print("Successfully generated and split AI analysis files.")
+            f.write(parts[1].strip() if len(parts) > 1 else "")
     else:
-        with open("ai_execution_out.txt", "w") as f:
-            f.write("⚙️ **Execution Plan**: Standard pivot execution rules active.")
+        print(response_text)
 
 if __name__ == "__main__":
     analyze_market()
