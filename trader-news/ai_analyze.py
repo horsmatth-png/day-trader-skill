@@ -2,15 +2,16 @@
 import os
 import json
 import time
+import random
 import argparse
 import warnings
 
 warnings.filterwarnings('ignore')
 import yfinance as yf
 from google import genai
-from google.genai import types
 
 def get_live_fallback_data():
+    """Fallback ticker retriever if watchlist files are missing or empty."""
     tickers = ["NVDA", "TSLA", "AAPL", "AMD", "META", "QQQ", "SPY", "^FTSE", "EWG", "^VIX"]
     data = {}
     for sym in tickers:
@@ -41,7 +42,6 @@ def analyze_market():
     if not target_json_str:
         target_json_str = json.dumps(get_live_fallback_data(), indent=2)
 
-    # Master Consolidated Prompt: Gets Macro + Setups + Execution Plan in ONE API call
     prompt = f"""
 You are a Senior Quantitative Analyst. Review these technical pivot & ATR targets:
 {target_json_str}
@@ -64,39 +64,36 @@ For each primary setup (AMZN, TSLA, AAPL, GOOGL), give EXACTLY 2 concise bullets
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
+        print("Error: GEMINI_API_KEY missing")
         return
 
-    # Enable automatic SDK network retries for status code 503/429
-    http_opts = types.HttpOptions(
-        retry_options=types.HttpRetryOptions(
-            attempts=5,
-            initial_delay=3.0,
-            http_status_codes=[429, 500, 502, 503, 504]
-        )
-    )
+    client = genai.Client(api_key=api_key)
 
-    client = genai.Client(api_key=api_key, http_options=http_opts)
-
-    # Current stable production models supported on free tier
+    # Clean production model list
     models_to_try = [
         "gemini-3.8-flash",
         "gemini-3.5-flash-lite",
-        "gemini-3.6-flash"
+        "gemini-flash-latest"
     ]
 
     response_text = None
-    for model in models_to_try:
-        try:
-            response = client.models.generate_content(model=model, contents=prompt)
-            if response and response.text:
-                response_text = response.text
-                break
-        except Exception:
-            time.sleep(3)
-            continue
+    
+    # Retry across models with backoff and jitter
+    for attempt in range(3):
+        for model in models_to_try:
+            try:
+                response = client.models.generate_content(model=model, contents=prompt)
+                if response and response.text:
+                    response_text = response.text
+                    break
+            except Exception as e:
+                time.sleep(2 + random.uniform(0.5, 1.5))
+                continue
+        if response_text:
+            break
+        time.sleep(4)
 
     if response_text:
-        # Split into two separate files for Discord posting
         parts = response_text.split("===EXECUTION_SPLIT===")
         with open("ai_targets_out.txt", "w") as f:
             f.write(parts[0].strip())
@@ -105,8 +102,11 @@ For each primary setup (AMZN, TSLA, AAPL, GOOGL), give EXACTLY 2 concise bullets
             with open("ai_execution_out.txt", "w") as f:
                 f.write(parts[1].strip())
     else:
+        # Guarantee output files exist so Discord pipeline never skips them
         with open("ai_targets_out.txt", "w") as f:
-            f.write("⚠️ **AI Generation Notice**: Free-tier API servers are under high load. Quantitative levels remain active above.")
+            f.write("⚠️ **AI Generation Notice**: Free-tier API servers are experiencing high demand. Quantitative levels remain fully active above.")
+        with open("ai_execution_out.txt", "w") as f:
+            f.write("⚙️ **Execution Plan**: AI plan pending capacity reset.")
 
 if __name__ == "__main__":
     analyze_market()
