@@ -21,23 +21,23 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-genai yfinance
+          pip install google-genai yfinance groq
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Run Intraday & ORB Scanner
         run: |
           mkdir -p trader
           python3 scan.py orb > scan_out.txt 2>/dev/null || true
-          # BRIDGE: Ensure scan output is written to trader/watchlist.json for Gemini
           if [ -s scan_out.txt ]; then
             cat scan_out.txt > trader/watchlist.json
           else
             echo "No scan data generated" > trader/watchlist.json
           fi
 
-      - name: Run Gemini Day Trading Analysis
+      - name: Run AI Day Trading Analysis (Gemini + Groq Fallback)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           python3 trader-news/ai_analyze.py > ai_out.txt 2>/dev/null || true
 
